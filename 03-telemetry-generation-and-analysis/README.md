@@ -1,4 +1,3 @@
-
 # Telemetry Generation & Security Event Analysis
 
 ## Overview
@@ -73,7 +72,7 @@ I then enabled the Guest account:
 net user guest /active:yes
 ```
 
-I returned to Computer Management and confirmed that the account was now enabled.
+I returned to Computer Management and confirmed that the Guest account was now enabled.
 
 ---
 
@@ -183,7 +182,7 @@ data.win.system.eventID: 4624
 
 ![Windows Event ID 4624](screenshots/windows-event-4624-successful-logon.png)
 
-I expanded the event and reviewed the detailed message:
+I expanded the event and reviewed:
 
 ```text
 data.win.system.message
@@ -205,7 +204,7 @@ data.win.system.eventID: 4732
 
 ![Windows Event ID 4732](screenshots/windows-event-4732-local-group-membership.png)
 
-I also reviewed the corresponding event message.
+I also reviewed the corresponding event message:
 
 ![Windows Event 4732 message details](screenshots/windows-event-4732-message-details.png)
 
@@ -233,7 +232,7 @@ Temporary Account Deleted
         └── Event ID 4726
 ```
 
-Instead of treating each event as an isolated alert or log entry, I could use the related Windows security events to reconstruct the sequence of account-management activity.
+Instead of treating each event as an isolated log entry, I could use the related Windows security events to reconstruct the sequence of account-management activity.
 
 ---
 
@@ -241,9 +240,7 @@ Instead of treating each event as an isolated alert or log entry, I could use th
 
 ## 11. Generating Failed SSH Authentication
 
-I next generated controlled SSH authentication activity against the Ubuntu endpoint.
-
-The Ubuntu endpoint was located at:
+I next generated controlled SSH authentication activity against the Ubuntu endpoint at:
 
 ```text
 192.168.71.129
@@ -313,7 +310,7 @@ The log contained information indicating that the connection associated with the
 
 The event also contained source connection information that could be used as an additional correlation point during an investigation.
 
-> **Evidence Note:** Source IP addresses should be interpreted directly from the captured Wazuh telemetry rather than inferred from the lab addressing table.
+> **Evidence Note:** Source IP addresses are interpreted directly from the captured Wazuh telemetry rather than inferred from the lab addressing table.
 
 ---
 
@@ -371,8 +368,6 @@ A successful authentication event establishes that access occurred, but it does 
 
 I therefore reviewed additional telemetry associated with the authenticated user.
 
-The events contained session-related information that could be used for correlation.
-
 For the session examined during this lab, I identified:
 
 ```text
@@ -389,17 +384,16 @@ These identifiers provided additional correlation points for following activity 
 
 ## 18. Reviewing Surrounding Events
 
-I also used Wazuh's **View surrounding documents** functionality.
+I used Wazuh's **View surrounding documents** functionality to review telemetry occurring around the relevant event timestamp.
 
-Starting from a relevant SSH event and timestamp, I reviewed telemetry occurring around the same period.
-
-This allowed me to investigate events occurring before and after the selected event rather than treating the individual log entry in isolation.
+This allowed me to examine events occurring before and after the selected SSH event rather than treating an individual log entry in isolation.
 
 Useful correlation points included:
 
 ```text
 Username
 Timestamp
+Source IP
 SSH process
 Process identifier
 Session information
@@ -413,7 +407,7 @@ This provided additional context for reconstructing the authenticated session.
 
 ## 19. Terminal Session Identifier
 
-I then reviewed Sysmon-related Linux telemetry associated with the activity.
+I reviewed Sysmon-related Linux telemetry associated with the activity.
 
 Within the event data, I identified a terminal session identifier:
 
@@ -433,7 +427,7 @@ Instead, identifiers, timestamps, usernames, processes, and surrounding events c
 
 # Additional Linux Activity
 
-## 20. Generating File Activity
+## 20. Generating and Validating File Activity
 
 I reconnected to the Ubuntu endpoint through SSH:
 
@@ -453,7 +447,7 @@ I then viewed the local account file:
 cat /etc/passwd
 ```
 
-Next, I redirected the contents of `/etc/passwd` into a file under `/tmp`:
+Next, I redirected the contents of `/etc/passwd` into a new file named `loot.txt` under the `/tmp` directory:
 
 ```bash
 cat /etc/passwd > /tmp/loot.txt
@@ -465,15 +459,19 @@ I navigated to the temporary directory:
 cd /tmp
 ```
 
-and confirmed that the file had been created:
+and listed its contents:
 
 ```bash
 ls -la
 ```
 
-This generated additional controlled endpoint activity for later telemetry analysis.
+The resulting output confirmed that `loot.txt` had been created successfully.
 
-> This activity represents local file access and file creation. No data transfer or exfiltration was performed during this step.
+![Linux loot file created](screenshots/linux-loot-file-created.png)
+
+This generated controlled file-access and file-creation activity that can be examined in the collected endpoint telemetry.
+
+> **Evidence Note:** This step demonstrates local file access and file creation. The data remained on the Ubuntu endpoint; no data exfiltration was performed.
 
 ---
 
@@ -518,6 +516,7 @@ Local file creation through output redirection
 | Successful SSH authentication | Accepted-password log entry |
 | SSH session | Session and process identifiers |
 | Linux terminal activity | Sysmon terminal session identifier |
+| Linux file creation | `/tmp/loot.txt` verified on endpoint |
 
 ---
 
@@ -527,9 +526,7 @@ Local file creation through output redirection
 
 A single Windows event can describe an individual action.
 
-Multiple related events can provide a sequence.
-
-For example:
+Multiple related events can provide a sequence:
 
 ```text
 4720 → Account Created
@@ -548,13 +545,13 @@ Viewed together, these events provided more investigative context than any one e
 The controlled SSH activity produced distinguishable telemetry for:
 
 ```text
-Invalid user
+Invalid User
      ↓
-Failed password
+Failed Password
      ↓
-Accepted password
+Accepted Password
      ↓
-Session activity
+Session Activity
 ```
 
 This means an investigation does not have to stop at determining whether an authentication attempt occurred.
@@ -575,13 +572,21 @@ Source IP
 Timestamp
 Event ID
 Process ID
-SSH session information
+SSH Session Information
 Terminal Session ID
 ```
 
 No single field should automatically be treated as proof of the complete sequence.
 
 The stronger conclusion comes from correlating multiple pieces of evidence.
+
+---
+
+## 4. Endpoint Evidence Can Validate Generated Activity
+
+The creation of `/tmp/loot.txt` provided endpoint-level confirmation that the controlled file operation occurred.
+
+This is useful when later comparing endpoint activity with centralized telemetry because I know exactly what action was performed and what artifact should exist as a result.
 
 ---
 
@@ -632,6 +637,7 @@ Instead, it provides evidence that an analyst can correlate with environmental c
 | `Accepted password` | SSH password authentication succeeded |
 | SSH session/process identifiers | Related SSH events can be correlated around the connection/session |
 | Terminal session identifier | Sysmon provides an additional correlation point for terminal activity |
+| `/tmp/loot.txt` present after redirection | The controlled local file creation operation succeeded |
 
 These events alone do not prove malicious intent.
 
@@ -645,7 +651,7 @@ This stage moved my Wazuh environment from **collecting telemetry** to **using t
 
 I generated known activity on Windows and Linux, located the resulting events in Wazuh, reviewed relevant fields, and correlated multiple events to reconstruct portions of the activity.
 
-The investigation workflow progressed from:
+My investigation workflow progressed from:
 
 ```text
 Generate Activity
