@@ -126,7 +126,7 @@ MyDFIR - Omotara Basic SOC Activity Overview
 
 At this point, the dashboard contained one working monitoring panel.
 
-I then expanded the dashboard with additional Windows account-management and Linux SSH authentication visualizations.
+I then expanded the dashboard with Windows account-management and Linux SSH authentication visualizations.
 
 ---
 
@@ -136,28 +136,35 @@ I then expanded the dashboard with additional Windows account-management and Lin
 
 The second panel was designed to visualize Windows account-management activity over time.
 
-During the previous telemetry-analysis stage, I generated and investigated account-management activity on the Windows endpoint.
+During the previous telemetry-analysis stage, I generated and investigated Windows account activity such as account creation, account deletion, and local group membership changes.
 
-For this dashboard, I monitored several Windows security event IDs associated with account and local group changes:
+Rather than monitoring only one Event ID, I created a query covering multiple Windows account-management events:
 
 ```text
-4720
-4722
-4723
-4725
-4726
-4732
-4733
-4738
+data.win.system.eventID: ("4720" OR "4722" OR "4723" OR "4724" OR "4725" OR "4726" OR "4732" OR "4733" OR "4738")
 ```
 
-These event IDs allow multiple types of account-management activity to be represented within the same visualization.
+The query targets the following Windows security events:
 
-The Windows event field used throughout the query and visualization was:
+| Event ID | Activity |
+|---|---|
+| `4720` | User account created |
+| `4722` | User account enabled |
+| `4723` | Attempt made to change an account password |
+| `4724` | Attempt made to reset an account password |
+| `4725` | User account disabled |
+| `4726` | User account deleted |
+| `4732` | Member added to a security-enabled local group |
+| `4733` | Member removed from a security-enabled local group |
+| `4738` | User account changed |
+
+Using the structured field:
 
 ```text
 data.win.system.eventID
 ```
+
+allowed me to target specific Windows security events instead of relying on broad text searches.
 
 ---
 
@@ -165,30 +172,34 @@ data.win.system.eventID
 
 I created a new **Line** visualization using the Wazuh archives data source.
 
+I applied the account-management query:
+
+```text
+data.win.system.eventID: ("4720" OR "4722" OR "4723" OR "4724" OR "4725" OR "4726" OR "4732" OR "4733" OR "4738")
+```
+
 For the metric, I configured:
 
 ```text
-Y-axis:
-Count
+Y-axis
+Aggregation: Count
 ```
 
 For the time dimension, I configured:
 
 ```text
-X-axis:
-Date Histogram
-
-Field:
-@timestamp
+X-axis
+Aggregation: Date Histogram
+Field: @timestamp
 ```
 
-I then split the series using:
+I then configured the visualization to split the series using:
 
 ```text
 data.win.system.eventID
 ```
 
-This allowed different Windows account-management event IDs to be represented separately across the selected time range.
+This allowed the different Windows account-management Event IDs to be represented separately across the selected time range.
 
 I named the visualization:
 
@@ -198,9 +209,9 @@ Windows Account Changes Over Time
 
 ![Windows account changes over time](screenshots/windows-account-changes-line-chart.png)
 
-The resulting visualization provides a time-based view of the Windows account-management activity represented by the selected event IDs.
+The resulting line chart provides a time-based view of account-management activity.
 
-Rather than reviewing each event individually, I can use the line chart to identify when account-related activity occurred and then investigate the underlying events when necessary.
+Instead of reviewing each event individually, I can use the visualization to identify periods of account activity and then pivot into the underlying telemetry for deeper investigation.
 
 ---
 
@@ -222,7 +233,7 @@ This restricted the visualization to telemetry associated with the monitored Ubu
 
 ## 8. Filtering Failed SSH Authentication
 
-During the previous stage, I deliberately generated failed SSH authentication attempts against:
+During the previous stage, I deliberately generated failed SSH authentication attempts against the Ubuntu endpoint:
 
 ```text
 192.168.71.129
@@ -248,7 +259,7 @@ For this panel, I selected a **Data Table** visualization.
 
 Unlike the Windows failed-logon metric, I wanted this visualization to retain event-level context that could be useful when reviewing authentication activity.
 
-I configured rows representing:
+I configured multiple rows to display:
 
 ```text
 Timestamp
@@ -324,7 +335,13 @@ The metric answers:
 
 > **How many failed Windows logon events occurred during the selected time range?**
 
-It provides a quick high-level indicator of Event ID `4625` activity.
+The underlying query is:
+
+```text
+data.win.system.eventID:4625
+```
+
+It provides a quick high-level indicator of failed Windows authentication activity.
 
 ---
 
@@ -332,17 +349,21 @@ It provides a quick high-level indicator of Event ID `4625` activity.
 
 The line chart answers:
 
-> **When did the selected Windows account-management events occur?**
+> **When did the selected Windows account-management events occur, and which Event IDs were involved?**
 
-Using `@timestamp` together with:
+The underlying query is:
+
+```text
+data.win.system.eventID: ("4720" OR "4722" OR "4723" OR "4724" OR "4725" OR "4726" OR "4732" OR "4733" OR "4738")
+```
+
+Using `@timestamp` for the X-axis and:
 
 ```text
 data.win.system.eventID
 ```
 
-allows the selected account-management events to be viewed across time.
-
-This makes periods or clusters of account activity easier to identify.
+to split the series allows the selected account-management events to be viewed across time.
 
 ---
 
@@ -350,7 +371,7 @@ This makes periods or clusters of account activity easier to identify.
 
 The data table answers:
 
-> **What contextual information is available about the individual failed SSH authentication events?**
+> **What contextual information is available about individual failed SSH authentication events?**
 
 Instead of reducing the activity to a single number, the table preserves fields that can support further investigation.
 
@@ -420,7 +441,33 @@ This reinforced the importance of understanding the telemetry schema rather than
 
 ---
 
-## 2. Visualization Should Match the Monitoring Question
+## 2. Multiple Event IDs Can Provide Broader Monitoring Context
+
+The account-management line chart combines several related Windows Event IDs:
+
+```text
+4720
+4722
+4723
+4724
+4725
+4726
+4732
+4733
+4738
+```
+
+Rather than creating a separate panel for every Event ID, I grouped related account-management activity into one visualization and split the results by:
+
+```text
+data.win.system.eventID
+```
+
+This provides a broader view while preserving the ability to distinguish between event types.
+
+---
+
+## 3. Visualization Should Match the Monitoring Question
 
 Different security questions require different visualization approaches.
 
@@ -433,7 +480,7 @@ High-level event count
 
 Line Chart
    ↓
-Activity over time
+Activity and event types over time
 
 Data Table
    ↓
@@ -446,20 +493,20 @@ Each visualization was selected based on the type of security question I wanted 
 
 ---
 
-## 3. Dashboards Support Triage, Not Final Conclusions
+## 4. Dashboards Support Triage, Not Final Conclusions
 
-A failed authentication count or a spike in account-management events does not automatically indicate malicious activity.
+A failed authentication count or an increase in account-management events does not automatically indicate malicious activity.
 
 The dashboard can surface activity that deserves attention, but determining whether the activity is expected, suspicious, or malicious still requires investigation and environmental context.
 
-For example:
+A monitoring workflow could progress as:
 
 ```text
-Failed Authentication Spike
+Activity Appears on Dashboard
           ↓
 Identify Time Window
           ↓
-Review Source/User Context
+Review User/Source Context
           ↓
 Examine Underlying Events
           ↓
@@ -472,7 +519,7 @@ The visualization is the starting point, not the final security conclusion.
 
 ---
 
-## 4. Previously Generated Telemetry Became Reusable
+## 5. Previously Generated Telemetry Became Reusable
 
 The telemetry generated during the previous stage was not only useful for one-time investigation.
 
@@ -486,27 +533,27 @@ This moved the lab from individual event analysis toward repeatable security mon
 
 By the end of this stage, I had created a three-panel Wazuh security monitoring dashboard.
 
-### Failed Windows Logon
+## Failed Windows Logon
 
 ```text
-Event ID: 4625
-Field: data.win.system.eventID
-Visualization: Metric
-Purpose: High-level failed Windows authentication count
+Query:
+data.win.system.eventID:4625
+
+Event ID:
+4625
+
+Visualization:
+Metric
+
+Purpose:
+High-level failed Windows authentication count
 ```
 
-### Windows Account Changes Over Time
+## Windows Account Changes Over Time
 
 ```text
-Event IDs:
-4720
-4722
-4723
-4725
-4726
-4732
-4733
-4738
+Query:
+data.win.system.eventID: ("4720" OR "4722" OR "4723" OR "4724" OR "4725" OR "4726" OR "4732" OR "4733" OR "4738")
 
 Event Field:
 data.win.system.eventID
@@ -515,23 +562,30 @@ Visualization:
 Line Chart
 
 Purpose:
-Account-management activity over time
+Monitor Windows account-management activity over time
 ```
 
-### Linux Failed SSH Authentication Activity
+## Linux Failed SSH Authentication Activity
 
 ```text
 Endpoint:
 MYDFIR-Linux
 
-Activity:
-Failed SSH password authentication
+Search:
+"failed password"
 
 Visualization:
 Data Table
 
+Fields:
+Timestamp
+Agent Name
+Source User
+Destination User
+Source IP
+
 Purpose:
-Event-level authentication context
+Provide event-level context for failed SSH authentication activity
 ```
 
 All three panels were combined into:
@@ -551,7 +605,7 @@ This stage provided hands-on experience with:
 - Windows Event ID analysis
 - Structured field querying
 - Authentication monitoring
-- Account-management monitoring
+- Windows account-management monitoring
 - Linux SSH telemetry analysis
 - Time-series security analysis
 - Dashboard filtering
